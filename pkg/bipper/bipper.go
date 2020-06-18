@@ -19,12 +19,16 @@ type Section struct {
 
 type Bipper struct {
 	player sound.Player
+	endPlayer sound.Player
 	doc Document
 }
 
-func (o *Bipper) Init(bipFile, docFile string) {
+func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
 	o.player = sound.NewPlayer()
 	o.player.Read(bipFile)
+	
+	o.endPlayer = sound.NewPlayer()
+	o.endPlayer.Read(endBipFile)
 
 	o.doc = Document{
 		Loop: false,
@@ -53,12 +57,13 @@ func (o *Bipper) Bip() {
 						duration := time.Time{}.Add(section.Duration)
 						remaining := duration.Sub(timer).Seconds()
 
-						if remaining <= 3.0 {
+						if remaining >= 1.0 && remaining <= 3.0 {
 							o.player.Play()
 							fmt.Printf("%s: %.0f\n", section.Name, remaining)
 						}
 
 					case <-alarm:
+						o.endPlayer.Play()
 						fmt.Printf("Section %s is over\n", section.Name)
 						countingDown = false
 				}
