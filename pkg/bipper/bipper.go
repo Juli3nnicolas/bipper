@@ -35,7 +35,7 @@ func (o *Bipper) Init(bipFile, docFile string) {
 	}
 }
 
-func Bip() {
+func (o *Bipper) Bip() {
 	loop := true
 	tick := time.Tick(time.Second)
 

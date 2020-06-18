@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/faiface/beep"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
 )
 
 type Player interface {
@@ -14,8 +16,8 @@ type Player interface {
 }
 
 type BeepPlayer struct {
-	streamer int
-	format int
+	streamer beep.StreamSeekCloser
+	format beep.Format
 }
 
 func NewPlayer() Player {
@@ -28,11 +30,11 @@ func (o *BeepPlayer) Read(file string) {
 		log.Fatal(err)
 	}
 
-	o.streamer, o.format, err := mp3.Decode(f)
+	o.streamer, o.format, err = mp3.Decode(f)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer streamer.Close()
+	defer o.streamer.Close()
 
 	speaker.Init(o.format.SampleRate, o.format.SampleRate.N(time.Second/10))
 }

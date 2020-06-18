@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
 )
