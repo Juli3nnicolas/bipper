@@ -40,6 +40,9 @@ func (o *BeepPlayer) Read(file string) {
 }
 
 func (o *BeepPlayer) Play() {
+	// Play whole stream at each call
+	speaker.Clear()
+	o.streamer.Seek(0)
 	speaker.Play(o.streamer)
 }
 
