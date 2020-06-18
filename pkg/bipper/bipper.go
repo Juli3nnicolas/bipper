@@ -67,3 +67,7 @@ func (o *Bipper) Bip() {
 		loop = o.doc.Loop
 	}
 }
+
+func (o *Bipper) Close() {
+	o.player.Close()
+}

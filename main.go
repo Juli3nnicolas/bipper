@@ -17,5 +17,15 @@ func main() {
 
 	fmt.Println("Starting bipper")
 	bipper.Bip()
+	bipper.Close()
 	fmt.Println("Done.")
 }
+
+/*func main() {
+	player := sound.NewPlayer()
+	fmt.Println("loading file")
+	player.Read("bip.mp3")
+	fmt.Println("Playing file")
+	player.Play()
+	select{}
+}*/

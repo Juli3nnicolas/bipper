@@ -13,6 +13,7 @@ import (
 type Player interface {
 	Read(file string)
 	Play()
+	Close()
 }
 
 type BeepPlayer struct {
@@ -34,11 +35,14 @@ func (o *BeepPlayer) Read(file string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer o.streamer.Close()
 
 	speaker.Init(o.format.SampleRate, o.format.SampleRate.N(time.Second/10))
 }
 
 func (o *BeepPlayer) Play() {
 	speaker.Play(o.streamer)
+}
+
+func (o *BeepPlayer) Close() {
+	o.streamer.Close()
 }
