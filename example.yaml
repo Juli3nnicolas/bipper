@@ -2,7 +2,7 @@
 loop: false
 sections:
   - name: calentamiento
-    duration: 2m
-
+    duration: 5s
+  
   - name: burpees
-    duration: 8m 
+    duration: 10s

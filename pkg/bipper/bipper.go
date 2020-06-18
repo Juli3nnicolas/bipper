@@ -4,23 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Juli3nnicolas/bipper/pkg/document"
 	"github.com/Juli3nnicolas/bipper/pkg/sound"
 )
-
-type Document struct {
-	Loop bool
-	Sections []Section
-}
-
-type Section struct {
-	Name string
-	Duration time.Duration
-}
 
 type Bipper struct {
 	player sound.Player
 	endPlayer sound.Player
-	doc Document
+	doc document.Document
 }
 
 func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
@@ -30,13 +21,7 @@ func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
 	o.endPlayer = sound.NewPlayer()
 	o.endPlayer.Read(endBipFile)
 
-	o.doc = Document{
-		Loop: false,
-		Sections: []Section{
-			{"first section", 10*time.Second},
-			{"second section", 10*time.Second},
-		},
-	}
+	o.doc = document.Read(docFile)
 }
 
 func (o *Bipper) Bip() {

@@ -11,7 +11,7 @@ import (
 func main() {
 	const bipFile string = "bip.mp3"
 	const endBipFile string = "end_bip.mp3"
-	const docFile string = ""
+	const docFile string = "example.yaml"
 
 	fmt.Println("Initialisaing bipper")
 	bipper := bipper.Bipper{}
