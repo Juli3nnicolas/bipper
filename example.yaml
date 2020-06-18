@@ -1,0 +1,8 @@
+---
+loop: false
+sections:
+  - name: calentamiento
+    duration: 2m
+
+  - name: burpees
+    duration: 8m 
