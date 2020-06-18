@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Juli3nnicolas/bipper/sound"
+	"github.com/Juli3nnicolas/bipper/pkg/sound"
 )
 
 type Document struct {

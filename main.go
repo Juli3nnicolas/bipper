@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Juli3nnicolas/bipper/bipper"
+	"github.com/Juli3nnicolas/bipper/pkg/bipper"
 )
 
 
