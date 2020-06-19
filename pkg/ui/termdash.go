@@ -31,7 +31,7 @@ type widgets struct {
 	currentSectionMessage	*segmentdisplay.SegmentDisplay
 	openedFileMessage 		*text.Text
 	blank					*text.Text
-	rollT    				*text.Text
+	rawDocument    				*text.Text
 	remainingTime			*segmentdisplay.SegmentDisplay
 }
 
@@ -52,7 +52,7 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 		return nil, err
 	}
 
-	rollT, err := newRollText(input.RawDoc)
+	rawDocument, err := newRollText(input.RawDoc)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 		openedFileMessage: openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
 		blank: blank,
-		rollT: rollT,
+		rawDocument: rawDocument,
 		remainingTime: remainingTime,
 	}, nil
 }
@@ -90,7 +90,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 		),),
 		grid.RowHeightPerc(65,
 				grid.ColWidthPerc(20,
-					grid.Widget(w.rollT,
+					grid.Widget(w.rawDocument,
 						container.Border(linestyle.None),
 					),
 				),
@@ -331,7 +331,7 @@ func newRollText(ch chan string) (*text.Text, error) {
 	go func() {
 		for {
 			txt := <- ch
-			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
+			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorWhite))); err != nil {
 				panic(err)
 			}
 		}
