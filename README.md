@@ -16,7 +16,7 @@ For a complete description of the file format, please read on:
 # loop is true if the following actions must be repeated when finished
 loop: true
 sections:
-  - name: Making coffee
+  - name: Make coffee
     duration: 1m
 
   - name: Drink up
