@@ -31,6 +31,7 @@ const redrawInterval = 250 * time.Millisecond
 type widgets struct {
 	currentSectionMessage	*segmentdisplay.SegmentDisplay
 	openedFileMessage 		*text.Text
+	blank					*text.Text
 	rollT    				*text.Text
 	remainingTime			*segmentdisplay.SegmentDisplay
 }
@@ -43,6 +44,11 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 	}
 
 	currentSectionMessage, err := newSegmentDisplay("Unknown", input.SectionName)
+	if err != nil {
+		return nil, err
+	}
+
+	blank, err := newTextLabel(" ")
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +66,7 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 	return &widgets{
 		openedFileMessage: openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
+		blank: blank,
 		rollT: rollT,
 		remainingTime: remainingTime,
 	}, nil
@@ -73,14 +80,16 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 
 	builder := grid.New()
 	builder.Add(
-		grid.RowHeightPerc(10, grid.Widget(w.openedFileMessage,
-			container.Border(linestyle.Light),
-			container.BorderTitle("opened file"),
-		),),
-		grid.RowHeightPerc(10, grid.Widget(w.currentSectionMessage,
+		grid.RowHeightPerc(5, grid.Widget(w.openedFileMessage,
 			container.Border(linestyle.None),
 		),),
-		grid.RowHeightPerc(80,
+		grid.RowHeightPerc(25, grid.Widget(w.currentSectionMessage,
+			container.Border(linestyle.None),
+		),),
+		grid.RowHeightPerc(5, grid.Widget(w.blank,
+			container.Border(linestyle.None),
+		),),
+		grid.RowHeightPerc(65,
 				grid.ColWidthPerc(20,
 					grid.Widget(w.rollT,
 						container.Border(linestyle.None),
