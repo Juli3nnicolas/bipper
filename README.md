@@ -7,6 +7,19 @@ using simple yaml files.
 Bipper is suitable for any routing training (tabata for instance) or any activities that require
 simple or advanced beepers (i.e: cooking).
 
+## Install
+If using any other platform than `Windows`, please read the `Prerequisite` section.
+
+To run:
+```
+go run main.go
+```
+
+To compile and then run as an executable:
+```
+go build -o bipper[.exe on windows] main.go
+```
+
 ## YAML format
 Please have a look at the file `example.yaml`. It provides a simple example on how to use the app.
 
