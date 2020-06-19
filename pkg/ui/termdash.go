@@ -242,11 +242,11 @@ func newTextLabel(msg string) (*text.Text, error) {
 	return txt, err
 }
 
-func updateChunks(sd *segmentdisplay.SegmentDisplay, text string) {
+func updateChunks(sd *segmentdisplay.SegmentDisplay, text string, color cell.Color) {
 	var chunks []*segmentdisplay.TextChunk
 	chunks = append(chunks, segmentdisplay.NewChunk(
 		text,
-		segmentdisplay.WriteCellOpts(cell.FgColor(cell.ColorGreen)),
+		segmentdisplay.WriteCellOpts(cell.FgColor(color)),
 	))
 	if err := sd.Write(chunks); err != nil {
 		panic(err)
@@ -273,12 +273,12 @@ func newSegmentDisplay(initMsg string, textChan chan string) (*segmentdisplay.Se
 	}*/
 
 	text := strings.Repeat(" ", 9) + initMsg
-	updateChunks(sd, text)
+	updateChunks(sd, text, cell.ColorYellow)
 
 	go func (ch chan string) {
 		for {
 			newTxt := <- ch
-			updateChunks(sd, newTxt)
+			updateChunks(sd, newTxt, cell.ColorYellow)
 		}
 	}(textChan)
 
@@ -305,12 +305,17 @@ func newTimeSegmentDisplay(initMsg string, timeChan chan time.Duration) (*segmen
 	}*/
 
 	text := initMsg
-	updateChunks(sd, text)
+	updateChunks(sd, text, cell.ColorGreen)
 
 	go func (ch chan time.Duration) {
 		for {
 			t := <- ch
-			updateChunks(sd, t.String())
+			color := cell.ColorGreen
+			if t.Seconds() <= 3.0 {
+				color = cell.ColorRed
+			}
+
+			updateChunks(sd, t.String(), color)
 		}
 	}(timeChan)
 
