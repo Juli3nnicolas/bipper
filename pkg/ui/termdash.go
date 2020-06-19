@@ -5,9 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
@@ -20,12 +18,8 @@ import (
 	"github.com/mum4k/termdash/terminal/tcell"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/barchart"
 	"github.com/mum4k/termdash/widgets/button"
-	"github.com/mum4k/termdash/widgets/donut"
-	"github.com/mum4k/termdash/widgets/gauge"
 	"github.com/mum4k/termdash/widgets/segmentdisplay"
-	"github.com/mum4k/termdash/widgets/sparkline"
 	"github.com/mum4k/termdash/widgets/text"
 	"github.com/mum4k/termdash/widgets/textinput"
 )
@@ -330,145 +324,6 @@ func newRollText(ctx context.Context) (*text.Text, error) {
 		return nil
 	})
 	return t, nil
-}
-
-// newSparkLines creates two new sparklines displaying random values.
-func newSparkLines(ctx context.Context) (*sparkline.SparkLine, *sparkline.SparkLine, error) {
-	spGreen, err := sparkline.New(
-		sparkline.Color(cell.ColorGreen),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	const max = 100
-	go periodic(ctx, 250*time.Millisecond, func() error {
-		v := int(rand.Int31n(max + 1))
-		return spGreen.Add([]int{v})
-	})
-
-	spRed, err := sparkline.New(
-		sparkline.Color(cell.ColorRed),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-	go periodic(ctx, 500*time.Millisecond, func() error {
-		v := int(rand.Int31n(max + 1))
-		return spRed.Add([]int{v})
-	})
-	return spGreen, spRed, nil
-
-}
-
-// newGauge creates a demo Gauge widget.
-func newGauge(ctx context.Context) (*gauge.Gauge, error) {
-	g, err := gauge.New()
-	if err != nil {
-		return nil, err
-	}
-
-	const start = 35
-	progress := start
-
-	go periodic(ctx, 2*time.Second, func() error {
-		if err := g.Percent(progress); err != nil {
-			return err
-		}
-		progress++
-		if progress > 100 {
-			progress = start
-		}
-		return nil
-	})
-	return g, nil
-}
-
-// newDonut creates a demo Donut widget.
-func newDonut(remaining chan time.Duration) (*donut.Donut, error) {
-	d, err := donut.New(donut.CellOpts(
-		cell.FgColor(cell.ColorNumber(33))),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	const start = 35
-	progress := start
-
-	ctx := context.TODO()
-	go periodic(ctx, 500*time.Millisecond, func() error {
-		if err := d.Percent(progress); err != nil {
-			return err
-		}
-		progress++
-		if progress > 100 {
-			progress = start
-		}
-		return nil
-	})
-	return d, nil
-}
-
-// newBarChart returns a BarcChart that displays random values on multiple bars.
-func newBarChart(ctx context.Context) (*barchart.BarChart, error) {
-	bc, err := barchart.New(
-		barchart.BarColors([]cell.Color{
-			cell.ColorNumber(33),
-			cell.ColorNumber(39),
-			cell.ColorNumber(45),
-			cell.ColorNumber(51),
-			cell.ColorNumber(81),
-			cell.ColorNumber(87),
-		}),
-		barchart.ValueColors([]cell.Color{
-			cell.ColorBlack,
-			cell.ColorBlack,
-			cell.ColorBlack,
-			cell.ColorBlack,
-			cell.ColorBlack,
-			cell.ColorBlack,
-		}),
-		barchart.ShowValues(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	const (
-		bars = 6
-		max  = 100
-	)
-	values := make([]int, bars)
-	go periodic(ctx, 1*time.Second, func() error {
-		for i := range values {
-			values[i] = int(rand.Int31n(max + 1))
-		}
-
-		return bc.Values(values, max)
-	})
-	return bc, nil
-}
-
-// distance is a thread-safe int value used by the newSince method.
-// Buttons write it and the line chart reads it.
-type distance struct {
-	v  int
-	mu sync.Mutex
-}
-
-// add adds the provided value to the one stored.
-func (d *distance) add(v int) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.v += v
-}
-
-// get returns the current value.
-func (d *distance) get() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.v
 }
 
 // setLayout sets the specified layout.
