@@ -79,5 +79,7 @@ func (o *Bipper) Bip() {
 }
 
 func (o *Bipper) Close() {
-	o.player.Close()
+	if o.player != nil {
+		o.player.Close()
+	}
 }

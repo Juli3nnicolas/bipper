@@ -23,26 +23,49 @@ import (
 	"github.com/mum4k/termdash/widgets/textinput"
 )
 
+type UI interface {
+	Run()
+}
+
+type TermDashUI struct {
+	bip 			*bipper.Bipper
+	bipFile			string
+	endBipFile		string
+	sectionFile		chan string
+	currentSection 	chan string
+	remainingTime 	chan time.Duration
+	rawDocument 	chan string
+}
+
+func (o *TermDashUI) Init(bipFile, endBipFile string) {
+	o.bipFile = bipFile
+	o.endBipFile = endBipFile
+	o.sectionFile = make(chan string)
+	o.currentSection = make(chan string)
+	o.remainingTime = make(chan time.Duration)
+	o.rawDocument = make(chan string)
+}
+
 // redrawInterval is how often termdash redraws the screen.
 const redrawInterval = 250 * time.Millisecond
 
 // widgets holds the widgets used by this demo.
 type widgets struct {
 	currentSectionMessage	*segmentdisplay.SegmentDisplay
-	openedFileMessage 		*text.Text
+	openedFileMessage 		*textinput.TextInput
 	blank					*text.Text
-	rawDocument    				*text.Text
+	rawDocument    			*text.Text
 	remainingTime			*segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
-func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, error) {
-	openedFileMessage, err := newTextLabel("Example.yaml")
+func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
+	openedFileMessage, err := newTextInput(o.sectionFile)
 	if err != nil {
 		return nil, err
 	}
 
-	currentSectionMessage, err := newSegmentDisplay("Unknown", input.SectionName)
+	currentSectionMessage, err := newSegmentDisplay("-", o.currentSection)
 	if err != nil {
 		return nil, err
 	}
@@ -52,12 +75,12 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 		return nil, err
 	}
 
-	rawDocument, err := newRollText(input.RawDoc)
+	rawDocument, err := newRollText(o.rawDocument)
 	if err != nil {
 		return nil, err
 	}
 
-	remainingTime, err := newTimeSegmentDisplay("0", input.Remaining)
+	remainingTime, err := newTimeSegmentDisplay("0", o.remainingTime)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +141,7 @@ const (
 	tcellTerminal   = "tcell"
 )
 
-func Tui(input bipper.BipperOutput) {
+func (o *TermDashUI) Run() {
 	terminalPtr := flag.String("terminal",
 		"termbox",
 		"The terminal implementation to use. Available implementations are 'termbox' and 'tcell' (default = termbox).")
@@ -147,7 +170,7 @@ func Tui(input bipper.BipperOutput) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	w, err := newWidgets(input, c)
+	w, err := o.newWidgets(c)
 	if err != nil {
 		panic(err)
 	}
@@ -167,17 +190,49 @@ func Tui(input bipper.BipperOutput) {
 		}
 	}
 
-	// Poll unused output
-	go func (input bipper.BipperOutput) {
-		for {
-			select {
-			case <- input.Msg:
-			}
-		}
-	}(input)
+	// Poll UI messages
+	go o.pollInput()
 
 	if err := termdash.Run(ctx, t, c, termdash.KeyboardSubscriber(quitter), termdash.RedrawInterval(redrawInterval)); err != nil {
 		panic(err)
+	}
+}
+
+func (o *TermDashUI) pollInput() {
+	for {
+		// This step is necessary in case no bipper has been set
+		var currentSection, rawDocument, msg chan string
+		var remainingTime chan time.Duration
+		if o.bip != nil {
+			currentSection = o.bip.Output.SectionName
+			rawDocument = o.bip.Output.RawDoc
+			msg = o.bip.Output.Msg
+			remainingTime = o.bip.Output.Remaining
+		}
+
+		select {
+		// Create a new bipper
+		case file := <- o.sectionFile:
+			if o.bip != nil {
+				o.bip.Close()
+			}
+			o.bip = &bipper.Bipper{}
+			o.bip.Init(o.bipFile, o.endBipFile, file)
+			
+			go func() {
+				o.bip.Bip()
+				o.bip.Close()
+			}()
+
+			// Pass the messages to the UI
+			case tmp := <- currentSection:
+				o.currentSection <- tmp
+			case tmp := <- rawDocument:
+				o.rawDocument <- tmp
+			case tmp := <- remainingTime:
+				o.remainingTime <- tmp
+			case <- msg:
+		}
 	}
 }
 
@@ -217,14 +272,15 @@ func textState(text string, capacity, step int) []rune {
 // SegmentDisplay.
 func newTextInput(updateText chan<- string) (*textinput.TextInput, error) {
 	input, err := textinput.New(
-		textinput.Label("Change text to: ", cell.FgColor(cell.ColorBlue)),
+		textinput.Label("File path: ", cell.FgColor(cell.ColorWhite)),
 		textinput.MaxWidthCells(20),
-		textinput.PlaceHolder("enter any text"),
+		textinput.PlaceHolder("click here"),
+		textinput.PlaceHolderColor(cell.ColorWhite),
+		textinput.FillColor(cell.ColorNumber(0)),
 		textinput.OnSubmit(func(text string) error {
 			updateText <- text
 			return nil
 		}),
-		textinput.ClearOnSubmit(),
 	)
 	if err != nil {
 		return nil, err

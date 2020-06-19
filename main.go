@@ -4,7 +4,7 @@ import (
 	//"fmt"
 	"time"
 
-	"github.com/Juli3nnicolas/bipper/pkg/bipper"
+	//"github.com/Juli3nnicolas/bipper/pkg/bipper"
 	"github.com/Juli3nnicolas/bipper/pkg/ui"
 )
 
@@ -15,17 +15,19 @@ func main() {
 	const docFile string = "example.yaml"
 
 	//fmt.Println("Initialisaing bipper")
-	bipper := bipper.Bipper{}
-	bipper.Init(bipFile, endBipFile, docFile)
+	//bipper := bipper.Bipper{}
+	//bipper.Init(bipFile, endBipFile, docFile)
 
-	go func () {
+	/*go func () {
 		//fmt.Println("Starting bipper")
 		bipper.Bip()
 		bipper.Close()
 		//fmt.Println("\nDone. Press ctrl + C to exit.")
-	}()
+	}()*/
 
-	ui.Tui(bipper.Output)
+	tui := ui.TermDashUI{}
+	tui.Init(bipFile, endBipFile)
+	tui.Run()
 	
 	// Leave the app open to play all remaining sounds
 	for {
