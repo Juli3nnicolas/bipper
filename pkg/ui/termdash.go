@@ -46,6 +46,12 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 	o.rawDocument = make(chan string)
 }
 
+const (
+	emptyCurrentSection string = "-"
+	emptyRawDocument string = " "
+	emptyRemainingTime time.Duration = time.Duration(0)
+)
+
 // redrawInterval is how often termdash redraws the screen.
 const redrawInterval = 250 * time.Millisecond
 
@@ -65,7 +71,7 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
-	currentSectionMessage, err := newSegmentDisplay("-", o.currentSection)
+	currentSectionMessage, err := newSegmentDisplay(emptyCurrentSection, o.currentSection)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +86,7 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
-	remainingTime, err := newTimeSegmentDisplay("0", o.remainingTime)
+	remainingTime, err := newTimeSegmentDisplay(emptyRemainingTime.String(), o.remainingTime)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +223,16 @@ func (o *TermDashUI) pollInput() {
 				o.bip.Close()
 			}
 			o.bip = &bipper.Bipper{}
-			o.bip.Init(o.bipFile, o.endBipFile, file)
 			
+			err := o.bip.Init(o.bipFile, o.endBipFile, file)
+			if err != nil {
+				o.bip = nil
+				o.currentSection <- emptyCurrentSection
+				o.rawDocument <- emptyRawDocument
+				o.remainingTime <- emptyRemainingTime
+				break
+			}
+
 			go func() {
 				o.bip.Bip()
 				o.bip.Close()
@@ -387,6 +401,7 @@ func newRollText(ch chan string) (*text.Text, error) {
 	go func() {
 		for {
 			txt := <- ch
+			t.Reset()
 			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorWhite))); err != nil {
 				panic(err)
 			}

@@ -23,7 +23,7 @@ type Bipper struct {
 	doc 		document.Document
 }
 
-func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
+func (o *Bipper) Init(bipFile, endBipFile, docFile string) (err error) {
 	o.Output.Msg = make(chan string)
 	o.Output.SectionName = make(chan string)
 	o.Output.RawDoc = make(chan string)
@@ -35,7 +35,8 @@ func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
 	o.endPlayer = sound.NewPlayer()
 	o.endPlayer.Read(endBipFile)
 
-	o.rawDoc, o.doc = document.Read(docFile)
+	o.rawDoc, o.doc, err = document.Read(docFile)
+	return
 }
 
 func (o *Bipper) Bip() {
@@ -60,6 +61,12 @@ func (o *Bipper) Bip() {
 						duration := time.Time{}.Add(section.Duration)
 						remaining := duration.Sub(timer)
 						remainingSec := remaining.Seconds()
+
+						// A -1 value can happen in case time.Tick sends its value before
+						// time.After
+						if remainingSec < 0 {
+							break
+						}
 
 						o.Output.Remaining <- remaining
 						if remainingSec >= 1.0 && remainingSec <= 3.0 {

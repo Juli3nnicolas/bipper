@@ -1,5 +1,4 @@
 ---
-loop: false
 sections:
   - name: calentamiento
     duration: 5s
