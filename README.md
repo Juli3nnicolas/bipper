@@ -1,4 +1,6 @@
 # bipper
+![bipper.png](https://github.com/Juli3nnicolas/bipper/blob/master/bipper.png "bipper")
+
 Bipper (beep is bip in French) is a generic beeper application. Beep cycles are configured
 using simple yaml files.
 
