@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Juli3nnicolas/bipper/pkg/bipper"
 	"github.com/mum4k/termdash"
-	"github.com/mum4k/termdash/align"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
 	"github.com/mum4k/termdash/container/grid"
@@ -24,7 +24,6 @@ import (
 	"github.com/mum4k/termdash/widgets/button"
 	"github.com/mum4k/termdash/widgets/donut"
 	"github.com/mum4k/termdash/widgets/gauge"
-	"github.com/mum4k/termdash/widgets/linechart"
 	"github.com/mum4k/termdash/widgets/segmentdisplay"
 	"github.com/mum4k/termdash/widgets/sparkline"
 	"github.com/mum4k/termdash/widgets/text"
@@ -36,65 +35,30 @@ const redrawInterval = 250 * time.Millisecond
 
 // widgets holds the widgets used by this demo.
 type widgets struct {
-	segDist  				*segmentdisplay.SegmentDisplay
+	currentSectionMessage	*segmentdisplay.SegmentDisplay
 	openedFileMessage 		*text.Text
-	currentSectionMessage 	*text.Text
-	input    				*textinput.TextInput
 	rollT    				*text.Text
-	spGreen  				*sparkline.SparkLine
-	spRed    				*sparkline.SparkLine
-	gauge    				*gauge.Gauge
-	heartLC  				*linechart.LineChart
-	barChart 				*barchart.BarChart
-	donut    				*donut.Donut
-	leftB    				*button.Button
-	rightB   				*button.Button
-	sineLC   				*linechart.LineChart
-	buttons 				*layoutButtons
+	remainingTime			*segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
-func newWidgets(ctx context.Context, c *container.Container) (*widgets, error) {
-	updateText := make(chan string)
-	sd, err := newSegmentDisplay(ctx, updateText)
-	if err != nil {
-		return nil, err
-	}
-
-	input, err := newTextInput(updateText)
-	if err != nil {
-		return nil, err
-	}
-
+func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, error) {
 	openedFileMessage, err := newTextLabel("Example.yaml")
 	if err != nil {
 		return nil, err
 	}
 
-	currentSectionMessage, err := newTextLabel("Burpees")
+	currentSectionMessage, err := newSegmentDisplay("Unknown", input.SectionName)
 	if err != nil {
 		return nil, err
 	}
 
-	rollT, err := newRollText(ctx)
-	if err != nil {
-		return nil, err
-	}
-	spGreen, spRed, err := newSparkLines(ctx)
-	if err != nil {
-		return nil, err
-	}
-	g, err := newGauge(ctx)
+	rollT, err := newRollText(context.TODO())
 	if err != nil {
 		return nil, err
 	}
 
-	bc, err := newBarChart(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	don, err := newDonut(ctx)
+	remainingTime, err := newTimeSegmentDisplay("0", input.Remaining)
 	if err != nil {
 		return nil, err
 	}
@@ -102,14 +66,8 @@ func newWidgets(ctx context.Context, c *container.Container) (*widgets, error) {
 	return &widgets{
 		openedFileMessage: openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
-		segDist:  sd,
-		input:    input,
-		rollT:    rollT,
-		spGreen:  spGreen,
-		spRed:    spRed,
-		gauge:    g,
-		barChart: bc,
-		donut:    don,
+		rollT: rollT,
+		remainingTime: remainingTime,
 	}, nil
 }
 
@@ -125,7 +83,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 			container.Border(linestyle.Light),
 			container.BorderTitle("opened file"),
 		),),
-		grid.RowHeightPerc(10, grid.Widget(w.segDist,
+		grid.RowHeightPerc(10, grid.Widget(w.currentSectionMessage,
 			container.Border(linestyle.None),
 		),),
 		grid.RowHeightPerc(80,
@@ -135,7 +93,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 					),
 				),
 				grid.ColWidthPerc(80,
-					grid.Widget(w.donut,
+					grid.Widget(w.remainingTime,
 						container.Border(linestyle.None),
 					),
 				),
@@ -149,170 +107,6 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 	return gridOpts, nil
 }
 
-// contLayout prepares container options that represent the desired screen layout.
-// This function demonstrates the direct use of the container API.
-// gridLayout() and contLayout() demonstrate the two available layout APIs and
-// both produce equivalent layouts for layoutType layoutAll.
-// contLayout only produces layoutAll.
-func contLayout(w *widgets) ([]container.Option, error) {
-	buttonRow := []container.Option{
-		container.SplitVertical(
-			container.Left(
-				container.SplitVertical(
-					container.Left(
-						container.PlaceWidget(w.buttons.allB),
-					),
-					container.Right(
-						container.PlaceWidget(w.buttons.textB),
-					),
-				),
-			),
-			container.Right(
-				container.SplitVertical(
-					container.Left(
-						container.PlaceWidget(w.buttons.spB),
-					),
-					container.Right(
-						container.PlaceWidget(w.buttons.lcB),
-					),
-				),
-			),
-		),
-	}
-
-	textAndSparks := []container.Option{
-		container.SplitVertical(
-			container.Left(
-				container.Border(linestyle.Light),
-				container.BorderTitle("A rolling text"),
-				container.PlaceWidget(w.rollT),
-			),
-			container.Right(
-				container.SplitHorizontal(
-					container.Top(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Green SparkLine"),
-						container.PlaceWidget(w.spGreen),
-					),
-					container.Bottom(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Red SparkLine"),
-						container.PlaceWidget(w.spRed),
-					),
-				),
-			),
-		),
-	}
-
-	segmentTextInputSparks := []container.Option{
-		container.SplitHorizontal(
-			container.Top(
-				container.Border(linestyle.Light),
-				container.BorderTitle("Press Esc to quit"),
-				container.PlaceWidget(w.segDist),
-			),
-			container.Bottom(
-				container.SplitHorizontal(
-					container.Top(
-						container.SplitHorizontal(
-							container.Top(
-								container.PlaceWidget(w.input),
-							),
-							container.Bottom(buttonRow...),
-						),
-					),
-					container.Bottom(textAndSparks...),
-					container.SplitPercent(40),
-				),
-			),
-			container.SplitPercent(50),
-		),
-	}
-
-	gaugeAndHeartbeat := []container.Option{
-		container.SplitHorizontal(
-			container.Top(
-				container.Border(linestyle.Light),
-				container.BorderTitle("A Gauge"),
-				container.BorderColor(cell.ColorNumber(39)),
-				container.PlaceWidget(w.gauge),
-			),
-			container.Bottom(
-				container.Border(linestyle.Light),
-				container.BorderTitle("A LineChart"),
-				container.PlaceWidget(w.heartLC),
-			),
-			container.SplitPercent(20),
-		),
-	}
-
-	leftSide := []container.Option{
-		container.SplitHorizontal(
-			container.Top(segmentTextInputSparks...),
-			container.Bottom(gaugeAndHeartbeat...),
-			container.SplitPercent(50),
-		),
-	}
-
-	lcAndButtons := []container.Option{
-		container.SplitHorizontal(
-			container.Top(
-				container.Border(linestyle.Light),
-				container.BorderTitle("Multiple series"),
-				container.BorderTitleAlignRight(),
-				container.PlaceWidget(w.sineLC),
-			),
-			container.Bottom(
-				container.SplitVertical(
-					container.Left(
-						container.PlaceWidget(w.leftB),
-						container.AlignHorizontal(align.HorizontalRight),
-						container.PaddingRight(1),
-					),
-					container.Right(
-						container.PlaceWidget(w.rightB),
-						container.AlignHorizontal(align.HorizontalLeft),
-						container.PaddingLeft(1),
-					),
-				),
-			),
-			container.SplitPercent(80),
-		),
-	}
-
-	rightSide := []container.Option{
-		container.SplitHorizontal(
-			container.Top(
-				container.Border(linestyle.Light),
-				container.BorderTitle("BarChart"),
-				container.PlaceWidget(w.barChart),
-				container.BorderTitleAlignRight(),
-			),
-			container.Bottom(
-				container.SplitHorizontal(
-					container.Top(
-						container.Border(linestyle.Light),
-						container.BorderTitle("A Donut"),
-						container.BorderTitleAlignRight(),
-						container.PlaceWidget(w.donut),
-					),
-					container.Bottom(lcAndButtons...),
-					container.SplitPercent(30),
-				),
-			),
-			container.SplitPercent(30),
-		),
-	}
-
-	return []container.Option{
-		container.SplitVertical(
-			container.Left(leftSide...),
-			container.Right(rightSide...),
-			container.SplitPercent(70),
-		),
-	}, nil
-}
-
 // rootID is the ID assigned to the root container.
 const rootID = "root"
 
@@ -322,7 +116,7 @@ const (
 	tcellTerminal   = "tcell"
 )
 
-func tui() {
+func Tui(input bipper.BipperOutput) {
 	terminalPtr := flag.String("terminal",
 		"termbox",
 		"The terminal implementation to use. Available implementations are 'termbox' and 'tcell' (default = termbox).")
@@ -351,7 +145,7 @@ func tui() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	w, err := newWidgets(ctx, c)
+	w, err := newWidgets(input, c)
 	if err != nil {
 		panic(err)
 	}
@@ -370,6 +164,16 @@ func tui() {
 			cancel()
 		}
 	}
+
+	// Poll unused output
+	go func (input bipper.BipperOutput) {
+		for {
+			select {
+			case <- input.Msg:
+			}
+		}
+	}(input)
+
 	if err := termdash.Run(ctx, t, c, termdash.KeyboardSubscriber(quitter), termdash.RedrawInterval(redrawInterval)); err != nil {
 		panic(err)
 	}
@@ -435,9 +239,20 @@ func newTextLabel(msg string) (*text.Text, error) {
 	return txt, err
 }
 
+func updateChunks(sd *segmentdisplay.SegmentDisplay, text string) {
+	var chunks []*segmentdisplay.TextChunk
+	chunks = append(chunks, segmentdisplay.NewChunk(
+		text,
+		segmentdisplay.WriteCellOpts(cell.FgColor(cell.ColorGreen)),
+	))
+	if err := sd.Write(chunks); err != nil {
+		panic(err)
+	}
+}
+
 // newSegmentDisplay creates a new SegmentDisplay that initially shows the
 // Termdash name. Shows any text that is sent over the channel.
-func newSegmentDisplay(ctx context.Context, updateText <-chan string) (*segmentdisplay.SegmentDisplay, error) {
+func newSegmentDisplay(initMsg string, textChan chan string) (*segmentdisplay.SegmentDisplay, error) {
 	sd, err := segmentdisplay.New()
 	if err != nil {
 		return nil, err
@@ -454,16 +269,47 @@ func newSegmentDisplay(ctx context.Context, updateText <-chan string) (*segmentd
 		cell.ColorRed,
 	}*/
 
-	text := strings.Repeat(" ", 9) + "Termdash"
+	text := strings.Repeat(" ", 9) + initMsg
+	updateChunks(sd, text)
 
-	var chunks []*segmentdisplay.TextChunk
-	chunks = append(chunks, segmentdisplay.NewChunk(
-		text,
-		segmentdisplay.WriteCellOpts(cell.FgColor(cell.ColorGreen)),
-	))
-	if err := sd.Write(chunks); err != nil {
-		panic(err)
+	go func (ch chan string) {
+		for {
+			newTxt := <- ch
+			updateChunks(sd, newTxt)
+		}
+	}(textChan)
+
+	return sd, nil
+}
+
+// newTimeSegmentDisplay creates a new SegmentDisplay that initially shows the
+// Termdash name. Shows any text that is sent over the channel.
+func newTimeSegmentDisplay(initMsg string, timeChan chan time.Duration) (*segmentdisplay.SegmentDisplay, error) {
+	sd, err := segmentdisplay.New()
+	if err != nil {
+		return nil, err
 	}
+
+	/*colors := []cell.Color{
+		cell.ColorBlue,
+		cell.ColorRed,
+		cell.ColorYellow,
+		cell.ColorBlue,
+		cell.ColorGreen,
+		cell.ColorRed,
+		cell.ColorGreen,
+		cell.ColorRed,
+	}*/
+
+	text := initMsg
+	updateChunks(sd, text)
+
+	go func (ch chan time.Duration) {
+		for {
+			t := <- ch
+			updateChunks(sd, t.String())
+		}
+	}(timeChan)
 
 	return sd, nil
 }
@@ -539,7 +385,7 @@ func newGauge(ctx context.Context) (*gauge.Gauge, error) {
 }
 
 // newDonut creates a demo Donut widget.
-func newDonut(ctx context.Context) (*donut.Donut, error) {
+func newDonut(remaining chan time.Duration) (*donut.Donut, error) {
 	d, err := donut.New(donut.CellOpts(
 		cell.FgColor(cell.ColorNumber(33))),
 	)
@@ -550,6 +396,7 @@ func newDonut(ctx context.Context) (*donut.Donut, error) {
 	const start = 35
 	progress := start
 
+	ctx := context.TODO()
 	go periodic(ctx, 500*time.Millisecond, func() error {
 		if err := d.Percent(progress); err != nil {
 			return err

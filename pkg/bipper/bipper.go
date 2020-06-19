@@ -8,13 +8,24 @@ import (
 	"github.com/Juli3nnicolas/bipper/pkg/sound"
 )
 
+type BipperOutput struct {
+	Msg 		chan string
+	SectionName chan string
+	Remaining 	chan time.Duration
+}
+
 type Bipper struct {
-	player sound.Player
-	endPlayer sound.Player
-	doc document.Document
+	Output		BipperOutput
+	player 		sound.Player
+	endPlayer 	sound.Player
+	doc 		document.Document
 }
 
 func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
+	o.Output.Msg = make(chan string)
+	o.Output.SectionName = make(chan string)
+	o.Output.Remaining = make(chan time.Duration)
+	
 	o.player = sound.NewPlayer()
 	o.player.Read(bipFile)
 	
@@ -30,7 +41,9 @@ func (o *Bipper) Bip() {
 
 	for loop {
 		for _, section := range o.doc.Sections {
-			fmt.Printf("\nRunning section %s lasting %v\n", section.Name, section.Duration)
+			o.Output.Msg <- fmt.Sprintf("\nRunning section %s lasting %v\n", section.Name, section.Duration)
+			o.Output.SectionName <- section.Name
+			
 			var timer time.Time
 			alarm := time.After(section.Duration)
 
@@ -40,16 +53,18 @@ func (o *Bipper) Bip() {
 					case <-tick:
 						timer = timer.Add(time.Second)
 						duration := time.Time{}.Add(section.Duration)
-						remaining := duration.Sub(timer).Seconds()
+						remaining := duration.Sub(timer)
+						remainingSec := remaining.Seconds()
 
-						if remaining >= 1.0 && remaining <= 3.0 {
+						o.Output.Remaining <- remaining
+						if remainingSec >= 1.0 && remainingSec <= 3.0 {
 							o.player.Play()
-							fmt.Printf("%s: %.0f\n", section.Name, remaining)
+							o.Output.Msg <- fmt.Sprintf("%s: %.0f\n", section.Name, remainingSec)
 						}
 
 					case <-alarm:
 						o.endPlayer.Play()
-						fmt.Printf("Section %s is over\n", section.Name)
+						o.Output.Msg <- fmt.Sprintf("Section %s is over\n", section.Name)
 						countingDown = false
 				}
 			}

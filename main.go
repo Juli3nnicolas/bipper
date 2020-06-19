@@ -1,10 +1,11 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
+	"github.com/Juli3nnicolas/bipper/pkg/ui"
 )
 
 
@@ -13,14 +14,18 @@ func main() {
 	const endBipFile string = "end_bip.mp3"
 	const docFile string = "example.yaml"
 
-	fmt.Println("Initialisaing bipper")
+	//fmt.Println("Initialisaing bipper")
 	bipper := bipper.Bipper{}
 	bipper.Init(bipFile, endBipFile, docFile)
 
-	fmt.Println("Starting bipper")
-	bipper.Bip()
-	bipper.Close()
-	fmt.Println("\nDone. Press ctrl + C to exit.")
+	go func () {
+		//fmt.Println("Starting bipper")
+		bipper.Bip()
+		bipper.Close()
+		//fmt.Println("\nDone. Press ctrl + C to exit.")
+	}()
+
+	ui.Tui(bipper.Output)
 	
 	// Leave the app open to play all remaining sounds
 	for {

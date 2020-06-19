@@ -5,4 +5,4 @@ sections:
     duration: 5s
   
   - name: burpees
-    duration: 10s
+    duration: 1m30s
