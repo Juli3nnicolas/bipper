@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
@@ -341,7 +340,7 @@ func newSegmentDisplay(initMsg string, textChan chan string) (*segmentdisplay.Se
 		cell.ColorRed,
 	}*/
 
-	text := strings.Repeat(" ", 9) + initMsg
+	text := initMsg
 	updateChunks(sd, text, cell.ColorYellow)
 
 	go func (ch chan string) {
