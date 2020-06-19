@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -53,7 +52,7 @@ func newWidgets(input bipper.BipperOutput, c *container.Container) (*widgets, er
 		return nil, err
 	}
 
-	rollT, err := newRollText(context.TODO())
+	rollT, err := newRollText(input.RawDoc)
 	if err != nil {
 		return nil, err
 	}
@@ -323,20 +322,21 @@ func newTimeSegmentDisplay(initMsg string, timeChan chan time.Duration) (*segmen
 }
 
 // newRollText creates a new Text widget that displays rolling text.
-func newRollText(ctx context.Context) (*text.Text, error) {
+func newRollText(ch chan string) (*text.Text, error) {
 	t, err := text.New(text.RollContent())
 	if err != nil {
 		return nil, err
 	}
 
-	i := 0
-	go periodic(ctx, 1*time.Second, func() error {
-		if err := t.Write(fmt.Sprintf("Writing line %d.\n", i), text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
-			return err
+	go func() {
+		for {
+			txt := <- ch
+			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
+				panic(err)
+			}
 		}
-		i++
-		return nil
-	})
+	}()
+
 	return t, nil
 }
 

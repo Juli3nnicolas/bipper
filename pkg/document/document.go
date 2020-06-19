@@ -18,14 +18,13 @@ type Section struct {
 	Duration time.Duration
 }
 
-func Read(file string) Document {
+func Read(file string) (raw string, doc Document) {
 	f, err := os.Open(file)
 	if err != nil {
 		panic(err)
 	}
 
 	scanner := bufio.NewScanner(f)
-	raw := ""
 
 	for scanner.Scan() {
 		raw += scanner.Text() + "\n"
@@ -35,11 +34,10 @@ func Read(file string) Document {
 		panic(err)
 	}
 
-	doc := Document{}
 	err = yaml.Unmarshal([]byte(raw), &doc)
     if err != nil {
         panic(err)
 	}
 	
-	return doc
+	return
 }

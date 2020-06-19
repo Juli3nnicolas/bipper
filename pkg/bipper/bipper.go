@@ -11,6 +11,7 @@ import (
 type BipperOutput struct {
 	Msg 		chan string
 	SectionName chan string
+	RawDoc		chan string
 	Remaining 	chan time.Duration
 }
 
@@ -18,12 +19,14 @@ type Bipper struct {
 	Output		BipperOutput
 	player 		sound.Player
 	endPlayer 	sound.Player
+	rawDoc		string
 	doc 		document.Document
 }
 
 func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
 	o.Output.Msg = make(chan string)
 	o.Output.SectionName = make(chan string)
+	o.Output.RawDoc = make(chan string)
 	o.Output.Remaining = make(chan time.Duration)
 	
 	o.player = sound.NewPlayer()
@@ -32,10 +35,12 @@ func (o *Bipper) Init(bipFile, endBipFile, docFile string) {
 	o.endPlayer = sound.NewPlayer()
 	o.endPlayer.Read(endBipFile)
 
-	o.doc = document.Read(docFile)
+	o.rawDoc, o.doc = document.Read(docFile)
 }
 
 func (o *Bipper) Bip() {
+	o.Output.RawDoc <- o.rawDoc
+	
 	loop := true
 	tick := time.Tick(time.Second)
 
