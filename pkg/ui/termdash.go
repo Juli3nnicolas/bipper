@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
+	"github.com/Juli3nnicolas/bipper/pkg/document"
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
@@ -16,7 +17,7 @@ import (
 	"github.com/mum4k/termdash/terminal/tcell"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/button"
+	"github.com/mum4k/termdash/widgets/donut"
 	"github.com/mum4k/termdash/widgets/segmentdisplay"
 	"github.com/mum4k/termdash/widgets/text"
 	"github.com/mum4k/termdash/widgets/textinput"
@@ -27,13 +28,15 @@ type UI interface {
 }
 
 type TermDashUI struct {
-	bip 			*bipper.Bipper
-	bipFile			string
-	endBipFile		string
-	sectionFile		chan string
-	currentSection 	chan string
-	remainingTime 	chan time.Duration
-	rawDocument 	chan string
+	bip                  *bipper.Bipper
+	bipFile              string
+	endBipFile           string
+	sectionFile          chan string
+	currentSection       chan string
+	remainingTime        chan time.Duration
+	percentRemainingTime chan int
+	totalRemaining       chan time.Duration
+	rawDocument          chan string
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
@@ -42,13 +45,15 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 	o.sectionFile = make(chan string)
 	o.currentSection = make(chan string)
 	o.remainingTime = make(chan time.Duration)
+	o.percentRemainingTime = make(chan int)
+	o.totalRemaining = make(chan time.Duration)
 	o.rawDocument = make(chan string)
 }
 
 const (
-	emptyCurrentSection string = "-"
-	emptyRawDocument string = " "
-	emptyRemainingTime time.Duration = time.Duration(0)
+	emptyCurrentSection string        = "-"
+	emptyRawDocument    string        = " "
+	emptyRemainingTime  time.Duration = time.Duration(0)
 )
 
 // redrawInterval is how often termdash redraws the screen.
@@ -56,11 +61,13 @@ const redrawInterval = 250 * time.Millisecond
 
 // widgets holds the widgets used by this demo.
 type widgets struct {
-	currentSectionMessage	*segmentdisplay.SegmentDisplay
-	openedFileMessage 		*textinput.TextInput
-	blank					*text.Text
-	rawDocument    			*text.Text
-	remainingTime			*segmentdisplay.SegmentDisplay
+	currentSectionMessage *segmentdisplay.SegmentDisplay
+	openedFileMessage     *textinput.TextInput
+	blank                 *text.Text
+	rawDocument           *text.Text
+	remainingTime         *segmentdisplay.SegmentDisplay
+	percentRemainingTime  *donut.Donut
+	totalRemaining        *segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
@@ -90,12 +97,24 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
+	percentRemainingTime, err := newPercentDonut(o.percentRemainingTime, cell.ColorGreen)
+	if err != nil {
+		return nil, err
+	}
+
+	totalRemaining, err := newTimeSegmentDisplay(emptyRemainingTime.String(), o.totalRemaining)
+	if err != nil {
+		return nil, err
+	}
+
 	return &widgets{
-		openedFileMessage: openedFileMessage,
+		openedFileMessage:     openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
-		blank: blank,
-		rawDocument: rawDocument,
-		remainingTime: remainingTime,
+		blank:                 blank,
+		rawDocument:           rawDocument,
+		remainingTime:         remainingTime,
+		percentRemainingTime:  percentRemainingTime,
+		totalRemaining:        totalRemaining,
 	}, nil
 }
 
@@ -109,24 +128,36 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 	builder.Add(
 		grid.RowHeightPerc(5, grid.Widget(w.openedFileMessage,
 			container.Border(linestyle.None),
-		),),
+		)),
 		grid.RowHeightPerc(25, grid.Widget(w.currentSectionMessage,
 			container.Border(linestyle.None),
-		),),
+		)),
 		grid.RowHeightPerc(5, grid.Widget(w.blank,
 			container.Border(linestyle.None),
-		),),
-		grid.RowHeightPerc(65,
-				grid.ColWidthPerc(20,
-					grid.Widget(w.rawDocument,
-						container.Border(linestyle.None),
-					),
+		)),
+		grid.RowHeightPerc(55,
+			/*grid.ColWidthPerc(20,
+				grid.Widget(w.rawDocument,
+					container.Border(linestyle.None),
 				),
-				grid.ColWidthPerc(80,
-					grid.Widget(w.remainingTime,
-						container.Border(linestyle.None),
-					),
+			),*/
+			grid.ColWidthPerc(50,
+				grid.Widget(w.remainingTime,
+					container.Border(linestyle.None),
 				),
+			),
+			grid.ColWidthPerc(50,
+				grid.Widget(w.percentRemainingTime,
+					container.Border(linestyle.None),
+				),
+			),
+		),
+		grid.RowHeightPerc(10,
+			grid.ColWidthPerc(10,
+				grid.Widget(w.totalRemaining,
+					container.Border(linestyle.None),
+				),
+			),
 		),
 	)
 
@@ -204,31 +235,42 @@ func (o *TermDashUI) Run() {
 }
 
 func (o *TermDashUI) pollInput() {
+	const emptyFloatDuration float64 = -1
+	currentSectionMaxDuration := emptyFloatDuration
+	currentSectionRemainingTime := emptyFloatDuration
+
 	for {
 		// This step is necessary in case no bipper has been set
-		var currentSection, rawDocument, msg chan string
-		var remainingTime chan time.Duration
+		var rawDocument, msg chan string
+		var currentSection chan document.Section
+		var remainingTime, totalRemaining chan time.Duration
 		if o.bip != nil {
-			currentSection = o.bip.Output.SectionName
+			currentSection = o.bip.Output.Section
 			rawDocument = o.bip.Output.RawDoc
 			msg = o.bip.Output.Msg
 			remainingTime = o.bip.Output.Remaining
+			totalRemaining = o.bip.Output.TotalRemaining
 		}
 
 		select {
 		// Create a new bipper
-		case file := <- o.sectionFile:
+		case file := <-o.sectionFile:
+			currentSectionRemainingTime = emptyFloatDuration
+			currentSectionMaxDuration = emptyFloatDuration
+
 			if o.bip != nil {
 				o.bip.Close()
 			}
 			o.bip = &bipper.Bipper{}
-			
+
 			err := o.bip.Init(o.bipFile, o.endBipFile, file)
 			if err != nil {
 				o.bip = nil
 				o.currentSection <- emptyCurrentSection
 				o.rawDocument <- emptyRawDocument
 				o.remainingTime <- emptyRemainingTime
+				o.totalRemaining <- emptyRemainingTime
+				o.percentRemainingTime <- 0
 				break
 			}
 
@@ -237,48 +279,52 @@ func (o *TermDashUI) pollInput() {
 				o.bip.Close()
 			}()
 
-			// Pass the messages to the UI
-			case tmp := <- currentSection:
-				o.currentSection <- tmp
-			case tmp := <- rawDocument:
-				o.rawDocument <- tmp
-			case tmp := <- remainingTime:
-				o.remainingTime <- tmp
-			case <- msg:
+		// Pass the messages to the UI
+		case tmp := <-currentSection:
+			o.currentSection <- tmp.Name
+			currentSectionMaxDuration = tmp.Duration.Seconds()
+		case tmp := <-rawDocument:
+			o.rawDocument <- tmp
+		case tmp := <-remainingTime:
+			o.remainingTime <- tmp
+			currentSectionRemainingTime = tmp.Seconds()
+		case tmp := <-totalRemaining:
+			o.totalRemaining <- tmp
+		case <-msg:
+		}
+
+		if currentSectionMaxDuration != emptyFloatDuration &&
+			currentSectionRemainingTime != emptyFloatDuration {
+			o.percentRemainingTime <- int((currentSectionRemainingTime / currentSectionMaxDuration) * 100)
 		}
 	}
 }
 
-// periodic executes the provided closure periodically every interval.
-// Exits when the context expires.
-func periodic(ctx context.Context, interval time.Duration, fn func() error) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+// newPercentDonut creates a new donut displaying  its current value in percent.
+// The color parameter is used to set its color.
+func newPercentDonut(percentChan chan int, color cell.Color) (*donut.Donut, error) {
+	d, err := donut.New(
+		donut.CellOpts(cell.FgColor(color)),
+	)
+	if err != nil {
+		panic(err)
+	}
+	go playDonut(d, percentChan)
+
+	return d, err
+}
+
+// playDonut continuously changes the displayed percent value on the donut by the
+// step once every delay. Exits when the context expires.
+func playDonut(d *donut.Donut, percentChan chan int) {
 	for {
 		select {
-		case <-ticker.C:
-			if err := fn(); err != nil {
+		case percent := <-percentChan:
+			if err := d.Percent(percent); err != nil {
 				panic(err)
 			}
-		case <-ctx.Done():
-			return
 		}
 	}
-}
-
-// textState creates a rotated state for the text we are displaying.
-func textState(text string, capacity, step int) []rune {
-	if capacity == 0 {
-		return nil
-	}
-
-	var state []rune
-	for i := 0; i < capacity; i++ {
-		state = append(state, ' ')
-	}
-	state = append(state, []rune(text)...)
-	step = step % len(state)
-	return rotateRunes(state, step)
 }
 
 // newTextInput creates a new TextInput field that changes the text on the
@@ -341,12 +387,12 @@ func newSegmentDisplay(initMsg string, textChan chan string) (*segmentdisplay.Se
 	}*/
 
 	text := initMsg
-	updateChunks(sd, text, cell.ColorYellow)
+	updateChunks(sd, text, cell.ColorNumber(200))
 
-	go func (ch chan string) {
+	go func(ch chan string) {
 		for {
-			newTxt := <- ch
-			updateChunks(sd, newTxt, cell.ColorYellow)
+			newTxt := <-ch
+			updateChunks(sd, newTxt, cell.ColorNumber(200))
 		}
 	}(textChan)
 
@@ -375,9 +421,9 @@ func newTimeSegmentDisplay(initMsg string, timeChan chan time.Duration) (*segmen
 	text := initMsg
 	updateChunks(sd, text, cell.ColorGreen)
 
-	go func (ch chan time.Duration) {
+	go func(ch chan time.Duration) {
 		for {
-			t := <- ch
+			t := <-ch
 			color := cell.ColorGreen
 			if t.Seconds() <= 3.0 {
 				color = cell.ColorRed
@@ -399,7 +445,7 @@ func newRollText(ch chan string) (*text.Text, error) {
 
 	go func() {
 		for {
-			txt := <- ch
+			txt := <-ch
 			t.Reset()
 			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorWhite))); err != nil {
 				panic(err)
@@ -408,39 +454,4 @@ func newRollText(ch chan string) (*text.Text, error) {
 	}()
 
 	return t, nil
-}
-
-// setLayout sets the specified layout.
-func setLayout(c *container.Container, w *widgets) error {
-	gridOpts, err := gridLayout(w)
-	if err != nil {
-		return err
-	}
-	return c.Update(rootID, gridOpts...)
-}
-
-// layoutButtons are buttons that change the layout.
-type layoutButtons struct {
-	allB  *button.Button
-	textB *button.Button
-	spB   *button.Button
-	lcB   *button.Button
-}
-
-// rotateFloats returns a new slice with inputs rotated by step.
-// I.e. for a step of one:
-//   inputs[0] -> inputs[len(inputs)-1]
-//   inputs[1] -> inputs[0]
-// And so on.
-func rotateFloats(inputs []float64, step int) []float64 {
-	return append(inputs[step:], inputs[:step]...)
-}
-
-// rotateRunes returns a new slice with inputs rotated by step.
-// I.e. for a step of one:
-//   inputs[0] -> inputs[len(inputs)-1]
-//   inputs[1] -> inputs[0]
-// And so on.
-func rotateRunes(inputs []rune, step int) []rune {
-	return append(inputs[step:], inputs[:step]...)
 }
