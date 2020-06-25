@@ -17,7 +17,7 @@ import (
 	"github.com/mum4k/termdash/terminal/tcell"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/button"
+	"github.com/mum4k/termdash/widgets/donut"
 	"github.com/mum4k/termdash/widgets/segmentdisplay"
 	"github.com/mum4k/termdash/widgets/text"
 	"github.com/mum4k/termdash/widgets/textinput"
@@ -28,14 +28,15 @@ type UI interface {
 }
 
 type TermDashUI struct {
-	bip            *bipper.Bipper
-	bipFile        string
-	endBipFile     string
-	sectionFile    chan string
-	currentSection chan string
-	remainingTime  chan time.Duration
-	totalRemaining chan time.Duration
-	rawDocument    chan string
+	bip                  *bipper.Bipper
+	bipFile              string
+	endBipFile           string
+	sectionFile          chan string
+	currentSection       chan string
+	remainingTime        chan time.Duration
+	percentRemainingTime chan int
+	totalRemaining       chan time.Duration
+	rawDocument          chan string
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
@@ -44,6 +45,7 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 	o.sectionFile = make(chan string)
 	o.currentSection = make(chan string)
 	o.remainingTime = make(chan time.Duration)
+	o.percentRemainingTime = make(chan int)
 	o.totalRemaining = make(chan time.Duration)
 	o.rawDocument = make(chan string)
 }
@@ -64,6 +66,7 @@ type widgets struct {
 	blank                 *text.Text
 	rawDocument           *text.Text
 	remainingTime         *segmentdisplay.SegmentDisplay
+	percentRemainingTime  *donut.Donut
 	totalRemaining        *segmentdisplay.SegmentDisplay
 }
 
@@ -94,6 +97,11 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
+	percentRemainingTime, err := newPercentDonut(o.percentRemainingTime, cell.ColorGreen)
+	if err != nil {
+		return nil, err
+	}
+
 	totalRemaining, err := newTimeSegmentDisplay(emptyRemainingTime.String(), o.totalRemaining)
 	if err != nil {
 		return nil, err
@@ -105,6 +113,7 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		blank:                 blank,
 		rawDocument:           rawDocument,
 		remainingTime:         remainingTime,
+		percentRemainingTime:  percentRemainingTime,
 		totalRemaining:        totalRemaining,
 	}, nil
 }
@@ -132,8 +141,13 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 					container.Border(linestyle.None),
 				),
 			),
-			grid.ColWidthPerc(80,
+			grid.ColWidthPerc(40,
 				grid.Widget(w.remainingTime,
+					container.Border(linestyle.None),
+				),
+			),
+			grid.ColWidthPerc(40,
+				grid.Widget(w.percentRemainingTime,
 					container.Border(linestyle.None),
 				),
 			),
@@ -221,6 +235,10 @@ func (o *TermDashUI) Run() {
 }
 
 func (o *TermDashUI) pollInput() {
+	const emptyFloatDuration float64 = -1
+	currentSectionMaxDuration := emptyFloatDuration
+	currentSectionRemainingTime := emptyFloatDuration
+
 	for {
 		// This step is necessary in case no bipper has been set
 		var rawDocument, msg chan string
@@ -237,6 +255,9 @@ func (o *TermDashUI) pollInput() {
 		select {
 		// Create a new bipper
 		case file := <-o.sectionFile:
+			currentSectionRemainingTime = emptyFloatDuration
+			currentSectionMaxDuration = emptyFloatDuration
+
 			if o.bip != nil {
 				o.bip.Close()
 			}
@@ -249,6 +270,7 @@ func (o *TermDashUI) pollInput() {
 				o.rawDocument <- emptyRawDocument
 				o.remainingTime <- emptyRemainingTime
 				o.totalRemaining <- emptyRemainingTime
+				o.percentRemainingTime <- 0
 				break
 			}
 
@@ -260,47 +282,49 @@ func (o *TermDashUI) pollInput() {
 		// Pass the messages to the UI
 		case tmp := <-currentSection:
 			o.currentSection <- tmp.Name
+			currentSectionMaxDuration = tmp.Duration.Seconds()
 		case tmp := <-rawDocument:
 			o.rawDocument <- tmp
 		case tmp := <-remainingTime:
 			o.remainingTime <- tmp
+			currentSectionRemainingTime = tmp.Seconds()
 		case tmp := <-totalRemaining:
 			o.totalRemaining <- tmp
 		case <-msg:
 		}
-	}
-}
 
-// periodic executes the provided closure periodically every interval.
-// Exits when the context expires.
-func periodic(ctx context.Context, interval time.Duration, fn func() error) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if err := fn(); err != nil {
-				panic(err)
-			}
-		case <-ctx.Done():
-			return
+		if currentSectionMaxDuration != emptyFloatDuration &&
+			currentSectionRemainingTime != emptyFloatDuration {
+			o.percentRemainingTime <- int((currentSectionRemainingTime / currentSectionMaxDuration) * 100)
 		}
 	}
 }
 
-// textState creates a rotated state for the text we are displaying.
-func textState(text string, capacity, step int) []rune {
-	if capacity == 0 {
-		return nil
+// newPercentDonut creates a new donut displaying  its current value in percent.
+// The color parameter is used to set its color.
+func newPercentDonut(percentChan chan int, color cell.Color) (*donut.Donut, error) {
+	d, err := donut.New(
+		donut.CellOpts(cell.FgColor(color)),
+	)
+	if err != nil {
+		panic(err)
 	}
+	go playDonut(d, percentChan)
 
-	var state []rune
-	for i := 0; i < capacity; i++ {
-		state = append(state, ' ')
+	return d, err
+}
+
+// playDonut continuously changes the displayed percent value on the donut by the
+// step once every delay. Exits when the context expires.
+func playDonut(d *donut.Donut, percentChan chan int) {
+	for {
+		select {
+		case percent := <-percentChan:
+			if err := d.Percent(percent); err != nil {
+				panic(err)
+			}
+		}
 	}
-	state = append(state, []rune(text)...)
-	step = step % len(state)
-	return rotateRunes(state, step)
 }
 
 // newTextInput creates a new TextInput field that changes the text on the
@@ -430,39 +454,4 @@ func newRollText(ch chan string) (*text.Text, error) {
 	}()
 
 	return t, nil
-}
-
-// setLayout sets the specified layout.
-func setLayout(c *container.Container, w *widgets) error {
-	gridOpts, err := gridLayout(w)
-	if err != nil {
-		return err
-	}
-	return c.Update(rootID, gridOpts...)
-}
-
-// layoutButtons are buttons that change the layout.
-type layoutButtons struct {
-	allB  *button.Button
-	textB *button.Button
-	spB   *button.Button
-	lcB   *button.Button
-}
-
-// rotateFloats returns a new slice with inputs rotated by step.
-// I.e. for a step of one:
-//   inputs[0] -> inputs[len(inputs)-1]
-//   inputs[1] -> inputs[0]
-// And so on.
-func rotateFloats(inputs []float64, step int) []float64 {
-	return append(inputs[step:], inputs[:step]...)
-}
-
-// rotateRunes returns a new slice with inputs rotated by step.
-// I.e. for a step of one:
-//   inputs[0] -> inputs[len(inputs)-1]
-//   inputs[1] -> inputs[0]
-// And so on.
-func rotateRunes(inputs []rune, step int) []rune {
-	return append(inputs[step:], inputs[:step]...)
 }
