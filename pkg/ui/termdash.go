@@ -34,6 +34,7 @@ type TermDashUI struct {
 	sectionFile    chan string
 	currentSection chan string
 	remainingTime  chan time.Duration
+	totalRemaining chan time.Duration
 	rawDocument    chan string
 }
 
@@ -43,6 +44,7 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 	o.sectionFile = make(chan string)
 	o.currentSection = make(chan string)
 	o.remainingTime = make(chan time.Duration)
+	o.totalRemaining = make(chan time.Duration)
 	o.rawDocument = make(chan string)
 }
 
@@ -62,6 +64,7 @@ type widgets struct {
 	blank                 *text.Text
 	rawDocument           *text.Text
 	remainingTime         *segmentdisplay.SegmentDisplay
+	totalRemaining        *segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
@@ -91,12 +94,18 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
+	totalRemaining, err := newTimeSegmentDisplay(emptyRemainingTime.String(), o.totalRemaining)
+	if err != nil {
+		return nil, err
+	}
+
 	return &widgets{
 		openedFileMessage:     openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
 		blank:                 blank,
 		rawDocument:           rawDocument,
 		remainingTime:         remainingTime,
+		totalRemaining:        totalRemaining,
 	}, nil
 }
 
@@ -117,7 +126,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 		grid.RowHeightPerc(5, grid.Widget(w.blank,
 			container.Border(linestyle.None),
 		)),
-		grid.RowHeightPerc(65,
+		grid.RowHeightPerc(55,
 			grid.ColWidthPerc(20,
 				grid.Widget(w.rawDocument,
 					container.Border(linestyle.None),
@@ -125,6 +134,13 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 			),
 			grid.ColWidthPerc(80,
 				grid.Widget(w.remainingTime,
+					container.Border(linestyle.None),
+				),
+			),
+		),
+		grid.RowHeightPerc(10,
+			grid.ColWidthPerc(10,
+				grid.Widget(w.totalRemaining,
 					container.Border(linestyle.None),
 				),
 			),
@@ -209,12 +225,13 @@ func (o *TermDashUI) pollInput() {
 		// This step is necessary in case no bipper has been set
 		var rawDocument, msg chan string
 		var currentSection chan document.Section
-		var remainingTime chan time.Duration
+		var remainingTime, totalRemaining chan time.Duration
 		if o.bip != nil {
 			currentSection = o.bip.Output.Section
 			rawDocument = o.bip.Output.RawDoc
 			msg = o.bip.Output.Msg
 			remainingTime = o.bip.Output.Remaining
+			totalRemaining = o.bip.Output.TotalRemaining
 		}
 
 		select {
@@ -231,6 +248,7 @@ func (o *TermDashUI) pollInput() {
 				o.currentSection <- emptyCurrentSection
 				o.rawDocument <- emptyRawDocument
 				o.remainingTime <- emptyRemainingTime
+				o.totalRemaining <- emptyRemainingTime
 				break
 			}
 
@@ -246,6 +264,8 @@ func (o *TermDashUI) pollInput() {
 			o.rawDocument <- tmp
 		case tmp := <-remainingTime:
 			o.remainingTime <- tmp
+		case tmp := <-totalRemaining:
+			o.totalRemaining <- tmp
 		case <-msg:
 		}
 	}

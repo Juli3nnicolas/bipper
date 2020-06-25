@@ -9,10 +9,11 @@ import (
 )
 
 type BipperOutput struct {
-	Msg       chan string
-	Section   chan document.Section
-	RawDoc    chan string
-	Remaining chan time.Duration
+	Msg            chan string
+	Section        chan document.Section
+	RawDoc         chan string
+	Remaining      chan time.Duration
+	TotalRemaining chan time.Duration
 }
 
 type Bipper struct {
@@ -28,6 +29,7 @@ func (o *Bipper) Init(bipFile, endBipFile, docFile string) (err error) {
 	o.Output.Section = make(chan document.Section)
 	o.Output.RawDoc = make(chan string)
 	o.Output.Remaining = make(chan time.Duration)
+	o.Output.TotalRemaining = make(chan time.Duration)
 
 	o.player = sound.NewPlayer()
 	o.player.Read(bipFile)
@@ -44,6 +46,7 @@ func (o *Bipper) Bip() {
 
 	loop := true
 	tick := time.Tick(time.Second)
+	totalRemaining := o.doc.Total
 
 	for loop {
 		for _, section := range o.doc.Sections {
@@ -61,6 +64,7 @@ func (o *Bipper) Bip() {
 					duration := time.Time{}.Add(section.Duration)
 					remaining := duration.Sub(timer)
 					remainingSec := remaining.Seconds()
+					totalRemaining -= time.Second
 
 					// A -1 value can happen in case time.Tick sends its value before
 					// time.After
@@ -73,6 +77,8 @@ func (o *Bipper) Bip() {
 						o.player.Play()
 						o.Output.Msg <- fmt.Sprintf("%s: %.0f\n", section.Name, remainingSec)
 					}
+
+					o.Output.TotalRemaining <- totalRemaining
 
 				case <-alarm:
 					o.endPlayer.Play()

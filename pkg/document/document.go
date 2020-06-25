@@ -9,13 +9,22 @@ import (
 )
 
 type Document struct {
-	Loop bool
+	Loop     bool
 	Sections []Section
+	Dynamic
 }
 
 type Section struct {
-	Name string
+	Name     string
 	Duration time.Duration
+}
+
+// Dynamic is a struct containing values computed
+// after the yaml doc has been read and the document
+// struct hydrated
+type Dynamic struct {
+	// Total is the total time of every sections
+	Total time.Duration
 }
 
 func Read(file string) (raw string, doc Document, err error) {
@@ -35,9 +44,20 @@ func Read(file string) (raw string, doc Document, err error) {
 	}
 
 	err = yaml.Unmarshal([]byte(raw), &doc)
-    if err != nil {
-        return
+	if err != nil {
+		return
 	}
-	
+
+	setDynamics(&doc)
+
 	return
+}
+
+// setDynamics sets all dynamics fields of Document doc
+// Dynamic attributes are generated after the yaml document
+// has been successfuly parsed
+func setDynamics(doc *Document) {
+	for _, s := range doc.Sections {
+		doc.Total += s.Duration
+	}
 }
