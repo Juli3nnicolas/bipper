@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
+	"github.com/Juli3nnicolas/bipper/pkg/document"
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
@@ -27,13 +28,13 @@ type UI interface {
 }
 
 type TermDashUI struct {
-	bip 			*bipper.Bipper
-	bipFile			string
-	endBipFile		string
-	sectionFile		chan string
-	currentSection 	chan string
-	remainingTime 	chan time.Duration
-	rawDocument 	chan string
+	bip            *bipper.Bipper
+	bipFile        string
+	endBipFile     string
+	sectionFile    chan string
+	currentSection chan string
+	remainingTime  chan time.Duration
+	rawDocument    chan string
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
@@ -46,9 +47,9 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 }
 
 const (
-	emptyCurrentSection string = "-"
-	emptyRawDocument string = " "
-	emptyRemainingTime time.Duration = time.Duration(0)
+	emptyCurrentSection string        = "-"
+	emptyRawDocument    string        = " "
+	emptyRemainingTime  time.Duration = time.Duration(0)
 )
 
 // redrawInterval is how often termdash redraws the screen.
@@ -56,11 +57,11 @@ const redrawInterval = 250 * time.Millisecond
 
 // widgets holds the widgets used by this demo.
 type widgets struct {
-	currentSectionMessage	*segmentdisplay.SegmentDisplay
-	openedFileMessage 		*textinput.TextInput
-	blank					*text.Text
-	rawDocument    			*text.Text
-	remainingTime			*segmentdisplay.SegmentDisplay
+	currentSectionMessage *segmentdisplay.SegmentDisplay
+	openedFileMessage     *textinput.TextInput
+	blank                 *text.Text
+	rawDocument           *text.Text
+	remainingTime         *segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
@@ -91,11 +92,11 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 	}
 
 	return &widgets{
-		openedFileMessage: openedFileMessage,
+		openedFileMessage:     openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
-		blank: blank,
-		rawDocument: rawDocument,
-		remainingTime: remainingTime,
+		blank:                 blank,
+		rawDocument:           rawDocument,
+		remainingTime:         remainingTime,
 	}, nil
 }
 
@@ -109,24 +110,24 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 	builder.Add(
 		grid.RowHeightPerc(5, grid.Widget(w.openedFileMessage,
 			container.Border(linestyle.None),
-		),),
+		)),
 		grid.RowHeightPerc(25, grid.Widget(w.currentSectionMessage,
 			container.Border(linestyle.None),
-		),),
+		)),
 		grid.RowHeightPerc(5, grid.Widget(w.blank,
 			container.Border(linestyle.None),
-		),),
+		)),
 		grid.RowHeightPerc(65,
-				grid.ColWidthPerc(20,
-					grid.Widget(w.rawDocument,
-						container.Border(linestyle.None),
-					),
+			grid.ColWidthPerc(20,
+				grid.Widget(w.rawDocument,
+					container.Border(linestyle.None),
 				),
-				grid.ColWidthPerc(80,
-					grid.Widget(w.remainingTime,
-						container.Border(linestyle.None),
-					),
+			),
+			grid.ColWidthPerc(80,
+				grid.Widget(w.remainingTime,
+					container.Border(linestyle.None),
 				),
+			),
 		),
 	)
 
@@ -206,10 +207,11 @@ func (o *TermDashUI) Run() {
 func (o *TermDashUI) pollInput() {
 	for {
 		// This step is necessary in case no bipper has been set
-		var currentSection, rawDocument, msg chan string
+		var rawDocument, msg chan string
+		var currentSection chan document.Section
 		var remainingTime chan time.Duration
 		if o.bip != nil {
-			currentSection = o.bip.Output.SectionName
+			currentSection = o.bip.Output.Section
 			rawDocument = o.bip.Output.RawDoc
 			msg = o.bip.Output.Msg
 			remainingTime = o.bip.Output.Remaining
@@ -217,12 +219,12 @@ func (o *TermDashUI) pollInput() {
 
 		select {
 		// Create a new bipper
-		case file := <- o.sectionFile:
+		case file := <-o.sectionFile:
 			if o.bip != nil {
 				o.bip.Close()
 			}
 			o.bip = &bipper.Bipper{}
-			
+
 			err := o.bip.Init(o.bipFile, o.endBipFile, file)
 			if err != nil {
 				o.bip = nil
@@ -237,14 +239,14 @@ func (o *TermDashUI) pollInput() {
 				o.bip.Close()
 			}()
 
-			// Pass the messages to the UI
-			case tmp := <- currentSection:
-				o.currentSection <- tmp
-			case tmp := <- rawDocument:
-				o.rawDocument <- tmp
-			case tmp := <- remainingTime:
-				o.remainingTime <- tmp
-			case <- msg:
+		// Pass the messages to the UI
+		case tmp := <-currentSection:
+			o.currentSection <- tmp.Name
+		case tmp := <-rawDocument:
+			o.rawDocument <- tmp
+		case tmp := <-remainingTime:
+			o.remainingTime <- tmp
+		case <-msg:
 		}
 	}
 }
@@ -341,12 +343,12 @@ func newSegmentDisplay(initMsg string, textChan chan string) (*segmentdisplay.Se
 	}*/
 
 	text := initMsg
-	updateChunks(sd, text, cell.ColorYellow)
+	updateChunks(sd, text, cell.ColorNumber(200))
 
-	go func (ch chan string) {
+	go func(ch chan string) {
 		for {
-			newTxt := <- ch
-			updateChunks(sd, newTxt, cell.ColorYellow)
+			newTxt := <-ch
+			updateChunks(sd, newTxt, cell.ColorNumber(200))
 		}
 	}(textChan)
 
@@ -375,9 +377,9 @@ func newTimeSegmentDisplay(initMsg string, timeChan chan time.Duration) (*segmen
 	text := initMsg
 	updateChunks(sd, text, cell.ColorGreen)
 
-	go func (ch chan time.Duration) {
+	go func(ch chan time.Duration) {
 		for {
-			t := <- ch
+			t := <-ch
 			color := cell.ColorGreen
 			if t.Seconds() <= 3.0 {
 				color = cell.ColorRed
@@ -399,7 +401,7 @@ func newRollText(ch chan string) (*text.Text, error) {
 
 	go func() {
 		for {
-			txt := <- ch
+			txt := <-ch
 			t.Reset()
 			if err := t.Write(txt, text.WriteCellOpts(cell.FgColor(cell.ColorWhite))); err != nil {
 				panic(err)
