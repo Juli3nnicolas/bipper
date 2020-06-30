@@ -121,22 +121,6 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
-	/*pause, err := button.New("(p)ause", func() error {
-		if o.bip != nil {
-			o.bip.Input.TogglePause <- true
-		}
-		return nil
-		//return display.Write([]*segmentdisplay.TextChunk{
-		//	segmentdisplay.NewChunk(fmt.Sprintf("%d", val)),
-		//})
-	},
-		button.FillColor(cell.ColorNumber(220)),
-		button.GlobalKey('p'),
-	)
-	if err != nil {
-		return nil, err
-	}*/
-
 	return &widgets{
 		openedFileMessage:     openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
@@ -158,7 +142,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 
 	builder := grid.New()
 	builder.Add(
-		grid.RowHeightPerc(10,
+		grid.RowHeightPerc(5,
 			grid.ColWidthPerc(98,
 				grid.Widget(w.openedFileMessage,
 					container.Border(linestyle.None)),
@@ -167,7 +151,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 				grid.Widget(w.pause),
 			),
 		),
-		grid.RowHeightPerc(15, grid.Widget(w.currentSectionMessage,
+		grid.RowHeightPerc(25, grid.Widget(w.currentSectionMessage,
 			container.Border(linestyle.None),
 		)),
 		grid.RowHeightPerc(5, grid.Widget(w.blank,
@@ -330,7 +314,7 @@ func (o *TermDashUI) pollInput() {
 			}()
 
 		// Pass the messages to the UI
-		case <-o.pauser.ch: // change, no private access allowed
+		case <-o.pauser.PauseKeyDown():
 			if o.bip != nil && canPause.Value() {
 				isPaused = !isPaused
 				o.bip.Input.TogglePause <- isPaused

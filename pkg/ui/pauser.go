@@ -27,6 +27,11 @@ func NewPauser(k keyboard.Key, ch chan bool) *Pauser {
 	return p
 }
 
+// PauseKeyDown receives a toggle value whenever the pause key is pressed
+func (o *Pauser) PauseKeyDown() chan bool {
+	return o.ch
+}
+
 func (o *Pauser) pause() error {
 	o.ch <- o.paused
 	return nil

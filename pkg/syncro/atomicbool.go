@@ -26,6 +26,5 @@ func (o *AtomicBool) False() {
 }
 
 func (o *AtomicBool) Value() bool {
-	i := atomic.LoadUint32(&o.boolean)
-	return i == 1
+	return atomic.LoadUint32(&o.boolean) == 1
 }
