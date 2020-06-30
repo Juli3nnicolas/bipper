@@ -57,7 +57,7 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 
 const (
 	emptyCurrentSection string        = "-"
-	isPausedStr         string        = "P"
+	isPausedStr         string        = "||"
 	notPausedStr        string        = " "
 	emptyRawDocument    string        = " "
 	emptyRemainingTime  time.Duration = time.Duration(0)
