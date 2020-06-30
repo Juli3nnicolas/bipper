@@ -11,33 +11,23 @@ import (
 )
 
 type Pauser struct {
-	paused bool
+	paused bool // replace by an atomic value
 	ch     chan bool
 	key    keyboard.Key
 
 	// mu protects the widget.
 	mu sync.Mutex
-
-	// mch protects the channel
-	mch sync.Mutex
 }
 
-func NewPauser(k keyboard.Key) *Pauser {
+func NewPauser(k keyboard.Key, ch chan bool) *Pauser {
 	p := &Pauser{}
 	p.key = k
+	p.ch = ch
 
 	return p
 }
 
-func (o *Pauser) Chan(ch chan bool) {
-	o.mch.Lock()
-	defer o.mch.Unlock()
-	o.ch = ch
-}
-
 func (o *Pauser) pause() error {
-	o.mch.Lock()
-	defer o.mch.Unlock()
 	o.ch <- o.paused
 	return nil
 }

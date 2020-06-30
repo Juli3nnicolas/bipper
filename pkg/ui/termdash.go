@@ -8,6 +8,7 @@ import (
 
 	"github.com/Juli3nnicolas/bipper/pkg/bipper"
 	"github.com/Juli3nnicolas/bipper/pkg/document"
+	"github.com/Juli3nnicolas/bipper/pkg/syncro"
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
@@ -38,10 +39,11 @@ type TermDashUI struct {
 	percentRemainingTime chan int
 	totalRemaining       chan time.Duration
 	rawDocument          chan string
+	isPaused             chan string
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
-	o.pauser = NewPauser(keyboard.Key('p'))
+	o.pauser = NewPauser(keyboard.Key('p'), make(chan bool))
 	o.bipFile = bipFile
 	o.endBipFile = endBipFile
 	o.sectionFile = make(chan string)
@@ -50,10 +52,13 @@ func (o *TermDashUI) Init(bipFile, endBipFile string) {
 	o.percentRemainingTime = make(chan int)
 	o.totalRemaining = make(chan time.Duration)
 	o.rawDocument = make(chan string)
+	o.isPaused = make(chan string)
 }
 
 const (
 	emptyCurrentSection string        = "-"
+	isPausedStr         string        = "P"
+	notPausedStr        string        = " "
 	emptyRawDocument    string        = " "
 	emptyRemainingTime  time.Duration = time.Duration(0)
 )
@@ -70,8 +75,8 @@ type widgets struct {
 	remainingTime         *segmentdisplay.SegmentDisplay
 	percentRemainingTime  *donut.Donut
 	totalRemaining        *segmentdisplay.SegmentDisplay
-	//pause                 *button.Button
-	pause *Pauser
+	pause                 *Pauser
+	isPaused              *segmentdisplay.SegmentDisplay
 }
 
 // newWidgets creates all widgets used by this demo.
@@ -82,6 +87,11 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 	}
 
 	currentSectionMessage, err := newSegmentDisplay(emptyCurrentSection, o.currentSection)
+	if err != nil {
+		return nil, err
+	}
+
+	isPaused, err := newSegmentDisplay(notPausedStr, o.isPaused)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +146,7 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		percentRemainingTime:  percentRemainingTime,
 		totalRemaining:        totalRemaining,
 		pause:                 o.pauser,
+		isPaused:              isPaused,
 	}, nil
 }
 
@@ -182,6 +193,11 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 		grid.RowHeightPerc(10,
 			grid.ColWidthPerc(10,
 				grid.Widget(w.totalRemaining,
+					container.Border(linestyle.None),
+				),
+			),
+			grid.ColWidthPerc(10,
+				grid.Widget(w.isPaused,
 					container.Border(linestyle.None),
 				),
 			),
@@ -266,29 +282,32 @@ func (o *TermDashUI) pollInput() {
 	currentSectionMaxDuration := emptyFloatDuration
 	currentSectionRemainingTime := emptyFloatDuration
 
+	// Is true if the countdown can be paused
+	canPause := syncro.NewAtomicBool(false)
+	isPaused := false
+
 	for {
 		// This step is necessary in case no bipper has been set
 		var rawDocument, msg chan string
 		var currentSection chan document.Section
 		var remainingTime, totalRemaining chan time.Duration
-		var pauseCh chan bool
 		if o.bip != nil {
-			pauseCh = o.bip.Input.TogglePause
 			currentSection = o.bip.Output.Section
 			rawDocument = o.bip.Output.RawDoc
 			msg = o.bip.Output.Msg
 			remainingTime = o.bip.Output.Remaining
 			totalRemaining = o.bip.Output.TotalRemaining
 		}
-		o.pauser.Chan(pauseCh)
 
 		select {
 		// Create a new bipper
 		case file := <-o.sectionFile:
 			currentSectionRemainingTime = emptyFloatDuration
 			currentSectionMaxDuration = emptyFloatDuration
+			isPaused = false
 
 			if o.bip != nil {
+				canPause.False()
 				o.bip.Close()
 			}
 			o.bip = &bipper.Bipper{}
@@ -303,6 +322,7 @@ func (o *TermDashUI) pollInput() {
 				o.percentRemainingTime <- 0
 				break
 			}
+			canPause.True()
 
 			go func() {
 				o.bip.Bip()
@@ -310,6 +330,18 @@ func (o *TermDashUI) pollInput() {
 			}()
 
 		// Pass the messages to the UI
+		case <-o.pauser.ch: // change, no private access allowed
+			if o.bip != nil && canPause.Value() {
+				isPaused = !isPaused
+				o.bip.Input.TogglePause <- isPaused
+
+				if isPaused == true {
+					o.isPaused <- isPausedStr
+				} else {
+					o.isPaused <- notPausedStr
+				}
+			}
+
 		case tmp := <-currentSection:
 			o.currentSection <- tmp.Name
 			currentSectionMaxDuration = tmp.Duration.Seconds()
@@ -318,8 +350,13 @@ func (o *TermDashUI) pollInput() {
 		case tmp := <-remainingTime:
 			o.remainingTime <- tmp
 			currentSectionRemainingTime = tmp.Seconds()
-		case tmp := <-totalRemaining:
-			o.totalRemaining <- tmp
+		case remaining := <-totalRemaining:
+			o.totalRemaining <- remaining
+
+			// Do not accept pauses for the last 3 seconds
+			if remaining <= 3*time.Second {
+				canPause.False()
+			}
 		case <-msg:
 		}
 
