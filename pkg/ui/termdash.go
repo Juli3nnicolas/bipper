@@ -43,7 +43,7 @@ type TermDashUI struct {
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
-	o.pauser = NewPauser(keyboard.Key('p'), make(chan bool))
+	o.pauser = NewPauser(keyboard.Key(' '), make(chan bool))
 	o.bipFile = bipFile
 	o.endBipFile = endBipFile
 	o.sectionFile = make(chan string)
