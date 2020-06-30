@@ -11,7 +11,7 @@ import (
 )
 
 type Pauser struct {
-	paused bool // replace by an atomic value
+	paused bool
 	ch     chan bool
 	key    keyboard.Key
 
