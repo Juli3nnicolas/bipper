@@ -175,7 +175,7 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 			),
 		),
 		grid.RowHeightPerc(10,
-			grid.ColWidthPerc(10,
+			grid.ColWidthPerc(90,
 				grid.Widget(w.totalRemaining,
 					container.Border(linestyle.None),
 				),
