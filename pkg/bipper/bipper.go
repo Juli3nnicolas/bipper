@@ -16,7 +16,12 @@ type BipperOutput struct {
 	TotalRemaining chan time.Duration
 }
 
+type BipperInput struct {
+	TogglePause chan bool
+}
+
 type Bipper struct {
+	Input     BipperInput
 	Output    BipperOutput
 	player    sound.Player
 	endPlayer sound.Player
@@ -25,6 +30,8 @@ type Bipper struct {
 }
 
 func (o *Bipper) Init(bipFile, endBipFile, docFile string) (err error) {
+	o.Input.TogglePause = make(chan bool)
+
 	o.Output.Msg = make(chan string)
 	o.Output.Section = make(chan document.Section)
 	o.Output.RawDoc = make(chan string)
@@ -47,6 +54,7 @@ func (o *Bipper) Bip() {
 	loop := true
 	tick := time.Tick(time.Second)
 	totalRemaining := o.doc.Total
+	pause := false
 
 	for loop {
 		for _, section := range o.doc.Sections {
@@ -54,36 +62,39 @@ func (o *Bipper) Bip() {
 			o.Output.Section <- section
 
 			var timer time.Time
-			alarm := time.After(section.Duration)
 
 			countingDown := true
 			for countingDown {
 				select {
+				case <-o.Input.TogglePause:
+					pause = !pause
+
 				case <-tick:
-					timer = timer.Add(time.Second)
-					duration := time.Time{}.Add(section.Duration)
-					remaining := duration.Sub(timer)
-					remainingSec := remaining.Seconds()
-					totalRemaining -= time.Second
+					if !pause {
+						timer = timer.Add(time.Second)
+						duration := time.Time{}.Add(section.Duration)
+						remaining := duration.Sub(timer)
+						remainingSec := remaining.Seconds()
+						totalRemaining -= time.Second
 
-					// A -1 value can happen in case time.Tick sends its value before
-					// time.After
-					if remainingSec < 0 {
-						break
+						// When the time is over - play end bip and resume section processing (exit select)
+						if remainingSec <= 0 {
+							o.Output.Remaining <- 0
+							o.Output.TotalRemaining <- totalRemaining
+							o.endPlayer.Play()
+							o.Output.Msg <- fmt.Sprintf("Section %s is over\n", section.Name)
+							countingDown = false
+							break
+						}
+
+						o.Output.Remaining <- remaining
+						if remainingSec >= 1.0 && remainingSec <= 3.0 {
+							o.player.Play()
+							o.Output.Msg <- fmt.Sprintf("%s: %.0f\n", section.Name, remainingSec)
+						}
+
+						o.Output.TotalRemaining <- totalRemaining
 					}
-
-					o.Output.Remaining <- remaining
-					if remainingSec >= 1.0 && remainingSec <= 3.0 {
-						o.player.Play()
-						o.Output.Msg <- fmt.Sprintf("%s: %.0f\n", section.Name, remainingSec)
-					}
-
-					o.Output.TotalRemaining <- totalRemaining
-
-				case <-alarm:
-					o.endPlayer.Play()
-					o.Output.Msg <- fmt.Sprintf("Section %s is over\n", section.Name)
-					countingDown = false
 				}
 			}
 		}

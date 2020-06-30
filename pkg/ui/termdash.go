@@ -29,6 +29,7 @@ type UI interface {
 
 type TermDashUI struct {
 	bip                  *bipper.Bipper
+	pauser               *Pauser
 	bipFile              string
 	endBipFile           string
 	sectionFile          chan string
@@ -40,6 +41,7 @@ type TermDashUI struct {
 }
 
 func (o *TermDashUI) Init(bipFile, endBipFile string) {
+	o.pauser = NewPauser(keyboard.Key('p'))
 	o.bipFile = bipFile
 	o.endBipFile = endBipFile
 	o.sectionFile = make(chan string)
@@ -68,6 +70,8 @@ type widgets struct {
 	remainingTime         *segmentdisplay.SegmentDisplay
 	percentRemainingTime  *donut.Donut
 	totalRemaining        *segmentdisplay.SegmentDisplay
+	//pause                 *button.Button
+	pause *Pauser
 }
 
 // newWidgets creates all widgets used by this demo.
@@ -107,6 +111,22 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 
+	/*pause, err := button.New("(p)ause", func() error {
+		if o.bip != nil {
+			o.bip.Input.TogglePause <- true
+		}
+		return nil
+		//return display.Write([]*segmentdisplay.TextChunk{
+		//	segmentdisplay.NewChunk(fmt.Sprintf("%d", val)),
+		//})
+	},
+		button.FillColor(cell.ColorNumber(220)),
+		button.GlobalKey('p'),
+	)
+	if err != nil {
+		return nil, err
+	}*/
+
 	return &widgets{
 		openedFileMessage:     openedFileMessage,
 		currentSectionMessage: currentSectionMessage,
@@ -115,6 +135,7 @@ func (o *TermDashUI) newWidgets(c *container.Container) (*widgets, error) {
 		remainingTime:         remainingTime,
 		percentRemainingTime:  percentRemainingTime,
 		totalRemaining:        totalRemaining,
+		pause:                 o.pauser,
 	}, nil
 }
 
@@ -126,10 +147,16 @@ func gridLayout(w *widgets) ([]container.Option, error) {
 
 	builder := grid.New()
 	builder.Add(
-		grid.RowHeightPerc(5, grid.Widget(w.openedFileMessage,
-			container.Border(linestyle.None),
-		)),
-		grid.RowHeightPerc(25, grid.Widget(w.currentSectionMessage,
+		grid.RowHeightPerc(10,
+			grid.ColWidthPerc(98,
+				grid.Widget(w.openedFileMessage,
+					container.Border(linestyle.None)),
+			),
+			grid.ColWidthPerc(1,
+				grid.Widget(w.pause),
+			),
+		),
+		grid.RowHeightPerc(15, grid.Widget(w.currentSectionMessage,
 			container.Border(linestyle.None),
 		)),
 		grid.RowHeightPerc(5, grid.Widget(w.blank,
@@ -244,13 +271,16 @@ func (o *TermDashUI) pollInput() {
 		var rawDocument, msg chan string
 		var currentSection chan document.Section
 		var remainingTime, totalRemaining chan time.Duration
+		var pauseCh chan bool
 		if o.bip != nil {
+			pauseCh = o.bip.Input.TogglePause
 			currentSection = o.bip.Output.Section
 			rawDocument = o.bip.Output.RawDoc
 			msg = o.bip.Output.Msg
 			remainingTime = o.bip.Output.Remaining
 			totalRemaining = o.bip.Output.TotalRemaining
 		}
+		o.pauser.Chan(pauseCh)
 
 		select {
 		// Create a new bipper
